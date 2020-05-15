@@ -10,7 +10,7 @@ API_V2 = 'apikeyv2apikeyv2apikeyv2apikeyv2apikeyv2'
 
 CLIENT = MondayClient(user_name=USER_NAME, api_key_v1=API_V1, api_key_v2=API_V2)
 
-class ZoeBoardActions:
+class MondayWrapper:
     """
     Wrapper class for moncli module for operations on our monday.com tasks.
     Requires a board name which will be the base/main board we are working with.
@@ -431,12 +431,10 @@ class ZoeBoardActions:
         try:
             status_value = create_column_value(id='name', column_type=ColumnType.name, value=str(item_name))
             item_objects_list = board.get_items_by_column_values(column_value=status_value)
+            print(f"LOG SUCCESS: Found item object list from API using item name {item_name}")
         except Exception as e:
             print(f"LOG ERROR: Error getting item objects list matching item name {item_name} from Monday API. ERROR DETAILS: {e}")
-            item_objects_list = []
-
-        if not item_objects_list:
-            print(f"LOG INFO: No item objects returned from the search for item objects for item name \"{item_name}\" WIll pause and re-query Monday API")
+            print(f"LOG INFO: No item objects returned from the search for item objects for item name \"{item_name}\" due to API error. WIll pause and re-query Monday API")
             time.sleep(60)
             try:
                 status_value = create_column_value(id='name', column_type=ColumnType.name, value=str(item_name))
@@ -575,6 +573,13 @@ class ZoeBoardActions:
                 return new_value
             except Exception as e:
                 print(f"LOG ERROR: Changing column value for item {item_name}, column {col_title} failed: DETAILS: {e}")
+                print(f"LOG INFO: Will pause and retry for item {item_name}")
+                time.sleep(60)
+                try:
+                    item_obj.change_column_value(column_value=column_value)
+                    return new_value
+                except Exception as e:
+                    print(f"LOG ERROR: Changing column value for item {item_name}, column {col_title} failed on 2nd try: DETAILS: {e}")
 
         return None
 
@@ -615,3 +620,44 @@ class ZoeBoardActions:
             return status
 
         return value
+
+    def move_item_to_group(self, item_name, group_name, board_name=None):
+        """
+        Moves an item with name specified to the group with the group name specified
+        :param item_name: item name: str
+        :param group_name: group name: str
+        :param board_name: str
+        :return:
+        """
+        if not board_name:
+            board_name = self.board_name
+
+        # GET THE ITEM OBJECT FOR THE ITEM PARAMETERS SUPPLIED
+        item_obj = self.get_specific_item_by_name(item_name=item_name, board_name=board_name)
+
+        # CHECK IN CACHE FOR BOARD OBJECT
+        print(f"LOG INFO: Checking in board object cache for board name '{board_name}'.")
+        board = self.board_objects_cache.get(board_name)
+
+        if board is None:
+            try:
+                board = CLIENT.get_board(name=board_name)
+                print(f"LOG INFO: Board object for board with name {board.name} exists!")
+                self.board_objects_cache[board_name] = board
+            except Exception as e:
+                print(f"LOG WARN: No board found with name: {board_name}. ERROR DETAILS: {e}")
+                print(f"LOG WARN: Cannot move item to group {group_name}")
+                return
+        else:
+            print(f"LOG INFO: Found board object for board in cache. Board name {board.name} exists!")
+
+        try:
+            group_object = board.get_group(title=group_name)
+        except Exception as e:
+            print(f"LOG ERROR: Could not find group with name {group_name}: ERROR DETAILS: {e}")
+            return None
+
+        group_id = group_object.id
+        moved_item = item_obj.move_to_group(group_id=group_id)
+        print(f"LOG SUCCESS: Item {item_name} successfully moved to group {group_name}")
+        return moved_item
