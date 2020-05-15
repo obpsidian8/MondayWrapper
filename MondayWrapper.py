@@ -658,6 +658,16 @@ class MondayWrapper:
             return None
 
         group_id = group_object.id
-        moved_item = item_obj.move_to_group(group_id=group_id)
+        try:
+            moved_item = item_obj.move_to_group(group_id=group_id)
+        except Exception as e:
+            print(f"LOG ERROR: Moving item to group failed! Item Name: {item_name}. ERROR DETAILS: {e}. WIll pause and query API again")
+            time.sleep(60)
+            try:
+                moved_item = item_obj.move_to_group(group_id=group_id)
+            except Exception as e:
+                print(f"LOG ERROR: Moving item to group failed on 2nd try. Item Name: {item_name}. ERROR DETAILS: {e}. ")
+                return None
+
         print(f"LOG SUCCESS: Item {item_name} successfully moved to group {group_name}")
         return moved_item
