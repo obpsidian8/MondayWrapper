@@ -147,7 +147,7 @@ class MondayWrapper:
             print(f"LOG INFO: Adding item object for item '{item_name}' to cache for item objects.")
             self.item_objects_cache[item_object.name] = item_object
             if item_name == item_object.name:
-                print(f"LOG INFO: Found item with name '{item_name}' in in board '{board_name}'")
+                print(f"LOG INFO: Found item object with name '{item_name}' in in board '{board_name}'")
                 return item_object
 
         print(f"LOG INFO: No item/task found with name '{item_name}' in '{board_name}' using cache or API query")
@@ -256,7 +256,7 @@ class MondayWrapper:
         # print(f"LOG INFO: List of columns in board {board_name}:\n\t{board_colunms_list}")
         return columns_list
 
-    def get_column_settings_string_for_board(self, board_name=None):
+    def get_column_settings_string_for_board(self, board_name=None, col_title="Status"):
         """
         Returns the label settings for the board specified.
         If no board name is passed to this method, the name passed in the __init__ method is used.
@@ -272,7 +272,7 @@ class MondayWrapper:
         columns = retrieved_board.get_columns()
 
         for column in columns:
-            if column.title == "Status":
+            if column.title == col_title:
                 label_setting_str = column.settings_str
                 return label_setting_str
 
@@ -489,100 +489,6 @@ class MondayWrapper:
 
         return None
 
-    def change_value_of_column(self, item_name, col_title, new_value, board_name=None, link_text=None):
-        """
-        Changes the value of a column. Column type needs to be checked first
-        If no board name is passed to this method, the name passed in the __init__ method is used.
-        :param item_name: Name of item/ task: str
-        :param col_title: Name/ title of column: str
-        :param new_value: New value: Date values should be entered in the format. YYYY-MM-DD: str
-        :param board_name: Name of board: str
-        :return: The new value: str
-        """
-
-        if not new_value:
-            # IF NEW VALUE IS OF NONE TYPE, RETURN NONE. THIS MAY HAPPEN WHEN VALUES FROM THE DATABASE ARE NONE (FOR AUTOMATION)
-            return None
-
-        column_value = None
-        if not board_name:
-            board_name = self.board_name
-
-        # GET THE ITEM OBJECT FOR THE ITEM PARAMETERS SUPPLIED
-        item_obj = self.get_specific_item_by_name(item_name=item_name, board_name=board_name)
-        if item_obj is None:
-            print(f"LOG WARN: Item object is for item name \"{item_name}\" \"None\".")
-            secs = 60
-            print(f"\nLOG WARN:****Max query complexity for API might have been reached. Cooling off for {secs} seconds before retrying.")
-            time.sleep(secs)
-            item_obj = self.get_specific_item_by_name(item_name=item_name, board_name=board_name)
-
-            if item_obj is None:
-                print(f"LOG WARN: Item object for item name \"{item_name}\" is \"None\" on second try after pause. Column value will not be changed!")
-            else:
-                print(f"LOG SUCCESS: Item object for item name \"{item_name}\" was found on second try.")
-
-        # GET THE ID OF THE SPECIFIED COLUMN
-        col_id = self.get_column_id_by_name(col_name=col_title)
-
-        # GET COLUMN TYPE AND COMPOSE COLUMN VALUE
-        # ==================================================================================================
-        col_type = self.get_column_type_by_name(col_title=col_title, board_name=board_name)
-        if col_type == 'long-text':
-            column_type = ColumnType.long_text
-            column_value = create_column_value(id=col_id, column_type=column_type, text=str(new_value))
-
-        elif col_type == 'numeric':
-            column_type = ColumnType.numbers
-            column_value = create_column_value(id=col_id, column_type=column_type, value=float(new_value))
-
-        elif col_type == 'text':
-            column_type = ColumnType.text
-            column_value = create_column_value(id=col_id, column_type=column_type, value=str(new_value))
-
-        elif col_type == 'name':
-            column_type = ColumnType.name
-            column_value = create_column_value(id=col_id, column_type=column_type, value=str(new_value))
-
-        elif col_type == 'color':
-            column_type = ColumnType.status
-            labels_string = self.get_column_settings_string_for_board(board_name=board_name)
-
-            labels = json.loads(labels_string)
-
-            settings = StatusSettings(**labels)
-            column_value = create_column_value(id=col_id, column_type=column_type, label=str(new_value), settings=settings)
-            column_value.change_status_by_label(new_value)
-
-        elif col_type == 'date':
-            column_type = ColumnType.date
-            column_value = create_column_value(id=col_id, column_type=column_type, date=str(new_value))
-
-        elif col_type == 'link':
-            column_type = ColumnType.link
-            if link_text:
-                column_value = create_column_value(id=col_id, column_type=column_type, url=str(new_value), text=str(link_text))
-            else:
-                column_value = create_column_value(id=col_id, column_type=column_type, url=str(new_value))
-        # ===================================================================================================
-
-        # FINALLY, USE COMPOSED COLUMN VALUE TO UPDATE COLUMN
-        if column_value:
-            try:
-                item_obj.change_column_value(column_value=column_value)
-                return new_value
-            except Exception as e:
-                print(f"LOG ERROR: Changing column value for item {item_name}, column {col_title} failed: DETAILS: {e}")
-                print(f"LOG INFO: Will pause and retry for item {item_name}")
-                time.sleep(60)
-                try:
-                    item_obj.change_column_value(column_value=column_value)
-                    return new_value
-                except Exception as e:
-                    print(f"LOG ERROR: Changing column value for item {item_name}, column {col_title} failed on 2nd try: DETAILS: {e}")
-
-        return None
-
     def get_status_of_item(self, item_name, col_title="Status", board_name=None):
         """
         Gets the status of an item from a particular board.
@@ -621,6 +527,100 @@ class MondayWrapper:
 
         return value
 
+    def change_value_of_column(self, item_name, col_title, new_value, board_name=None, link_text=None):
+        """
+        Changes the value of a column. Column type needs to be checked first
+        If no board name is passed to this method, the name passed in the __init__ method is used.
+        :param item_name: Name of item/ task: str
+        :param col_title: Name/ title of column: str
+        :param new_value: New value: Date values should be entered in the format. YYYY-MM-DD: str
+        :param board_name: Name of board: str
+        :return: The new value: str
+        """
+
+        if new_value is None:
+            # IF NEW VALUE IS OF NONE TYPE, RETURN NONE. THIS MAY HAPPEN WHEN VALUES FROM THE DATABASE ARE NONE (FOR AUTOMATION)
+            return None
+
+        column_value = None
+        if not board_name:
+            board_name = self.board_name
+
+        # GET THE ITEM OBJECT FOR THE ITEM PARAMETERS SUPPLIED
+        item_obj = self.get_specific_item_by_name(item_name=item_name, board_name=board_name)
+        if item_obj is None:
+            print(f"LOG WARN: Item object is for item name \"{item_name}\" \"None\".")
+            secs = 60
+            print(f"\nLOG WARN:****Max query complexity for API might have been reached trying to get item object for {item_name}. Cooling off for {secs} seconds before retrying.")
+            time.sleep(secs)
+            item_obj = self.get_specific_item_by_name(item_name=item_name, board_name=board_name)
+
+            if item_obj is None:
+                print(f"LOG WARN: Item object for item name \"{item_name}\" is \"None\" on second try after pause. Column value will not be changed!")
+            else:
+                print(f"LOG SUCCESS: Item object for item name \"{item_name}\" was found on second try.")
+
+        # GET THE ID OF THE SPECIFIED COLUMN
+        col_id = self.get_column_id_by_name(col_name=col_title)
+
+        # GET COLUMN TYPE AND COMPOSE COLUMN VALUE
+        # ==================================================================================================
+        col_type = self.get_column_type_by_name(col_title=col_title, board_name=board_name)
+        if col_type == 'long-text':
+            column_type = ColumnType.long_text
+            column_value = create_column_value(id=col_id, column_type=column_type, text=str(new_value))
+
+        elif col_type == 'numeric':
+            column_type = ColumnType.numbers
+            column_value = create_column_value(id=col_id, column_type=column_type, value=float(new_value))
+
+        elif col_type == 'text':
+            column_type = ColumnType.text
+            column_value = create_column_value(id=col_id, column_type=column_type, value=str(new_value))
+
+        elif col_type == 'name':
+            column_type = ColumnType.name
+            column_value = create_column_value(id=col_id, column_type=column_type, value=str(new_value))
+
+        elif col_type == 'color':
+            column_type = ColumnType.status
+            labels_string = self.get_column_settings_string_for_board(board_name=board_name, col_title = col_title)
+
+            labels = json.loads(labels_string)
+
+            settings = StatusSettings(**labels)
+            column_value = create_column_value(id=col_id, column_type=column_type, label=str(new_value), settings=settings)
+            column_value.change_status_by_label(new_value)
+
+        elif col_type == 'date':
+            column_type = ColumnType.date
+            column_value = create_column_value(id=col_id, column_type=column_type, date=str(new_value))
+
+        elif col_type == 'link':
+            column_type = ColumnType.link
+            if link_text:
+                column_value = create_column_value(id=col_id, column_type=column_type, url=str(new_value), text=str(link_text))
+            else:
+                column_value = create_column_value(id=col_id, column_type=column_type, url=str(new_value))
+        # ===================================================================================================
+
+        # FINALLY, USE COMPOSED COLUMN VALUE TO UPDATE COLUMN
+        if column_value:
+            try:
+                item_obj.change_column_value(column_value=column_value)
+                return new_value
+            except Exception as e:
+                print(f"LOG ERROR: Changing column value for item {item_name}, column {col_title} failed: DETAILS: {e}")
+                print(f"LOG INFO: Will pause and retry for item {item_name}")
+                time.sleep(60)
+                try:
+                    item_obj.change_column_value(column_value=column_value)
+                    return new_value
+                except Exception as e:
+                    print(f"LOG ERROR: Changing column value for item {item_name}, column {col_title} failed on 2nd try: DETAILS: {e}")
+
+        return None
+
     def move_item_to_group(self, item_name, group_name, board_name=None):
         """
         Moves an item with name specified to the group with the group name specified
@@ -655,7 +655,12 @@ class MondayWrapper:
             group_object = board.get_group(title=group_name)
         except Exception as e:
             print(f"LOG ERROR: Could not find group with name {group_name}: ERROR DETAILS: {e}")
-            return None
+            time.sleep(60)
+            try:
+                group_object = board.get_group(title=group_name)
+            except Exception as e:
+                print(f"LOG ERROR: Could not find group with name {group_name}: ERROR DETAILS: {e}")
+                return None
 
         group_id = group_object.id
         try:
