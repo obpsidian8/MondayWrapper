@@ -93,18 +93,38 @@ class MondayWrapper:
         if not board_name:
             board_name = self.board_name
 
+        new_item_object = None
         item_exists = self.check_item_exists(item_name=item_name, board_name=board_name)
         if item_exists:
             print(f"LOG INFO: Item with name '{item_name}' already exists within board '{board_name}'. Getting item id for existing item")
         else:
             print(f"LOG INFO: Adding new item {item_name} to board {board_name}")
             retrieved_board = CLIENT.get_board_by_name(board_name)
-            new_item_object = retrieved_board.add_item(item_name=item_name)
-            print(f"LOG INFO: New item '{new_item_object.name}' added with item ID {new_item_object.id}")
+            try:
+                new_item_object = retrieved_board.add_item(item_name=item_name)
+                print(f"LOG INFO: New item '{new_item_object.name}' added with item ID {new_item_object.id}")
+            except Exception as e:
+                print(f"LOG ERROR: Could not add new item. Max complexity issue. Error details {e}. Will pause and try again")
+                complexityError = True
+                counter = 1
+                while complexityError and counter < 30:
+                    print(f"\nTrying Mpnday.com API. Try #{counter} from (add_new_item_to_board - getting new_item_object)")
+                    time.sleep(2)
+                    try:
+                        new_item_object = retrieved_board.add_item(item_name=item_name)
+                        print(f"LOG INFO: New item '{new_item_object.name}' added with item ID {new_item_object.id}")
+                        complexityError = False
+                    except Exception as e:
+                        print(f"LOG ERROR: Could not add new item. Max complexity issue. Error details {e}. Will pause and try again")
+                        counter = counter + 1
 
-            # ADD TO CACHE: ITEM OBJECT
-            print(f"LOG INFO: Adding item object for item \"{item_name}\" to cache for item objects.")
-            self.item_objects_cache[new_item_object.name] = new_item_object
+            if new_item_object:
+                # ADD TO CACHE: ITEM OBJECT
+                print(f"LOG INFO: Adding item object for item \"{item_name}\" to cache for item objects.")
+                self.item_objects_cache[new_item_object.name] = new_item_object
+            else:
+                print(f"LOG ERROR: Could not add new item {item_name} after multiple tries")
+                return None
 
         item_id = self.get_item_id_by_name(item_name=item_name, board_name=board_name)
         return item_id
@@ -174,6 +194,7 @@ class MondayWrapper:
             # print(f"LOG INFO: ITEM DETAILS: {item_info}")
             board_items_list.append(board_item)
         # print(f"LOG INFO: List of items in board {board_name}:\n\t{board_items_list}")
+        print(f"LOG INFO: {len(board_items_list)} found.")
         return board_items_list
 
     def check_board_exists(self, board_name=None):
@@ -361,7 +382,7 @@ class MondayWrapper:
         try:
             col_val_object = item_obj.get_column_value(title=col_title)
         except Exception as e:
-            print(f"LOG ERROR: Error getting column value object for item \"{item_name}\"  at column \"{col_title}\" using column name. ERROR DETAILS: {e}")
+            print(f"LOG ERROR: Error getting column value object for item \"{item_name}\"  at column \"{col_title}\" using column name. ERROR DETAILS: {e}. Will use Id")
             col_val_object = item_obj.get_column_value(id=col_id)
             if col_val_object:
                 print(f"LOG INFO: Column value object found for item \"{item_name}\" and column \"{col_title}\" using column id.")
@@ -417,13 +438,22 @@ class MondayWrapper:
                 self.board_objects_cache[board_name] = board
             except Exception as e:
                 print(f"LOG ERROR: Board with name '{board_name}' not returned from API query. ERROR DETAILS: {e}. Will pause and try again")
-                time.sleep(60)
-                try:
-                    board = CLIENT.get_board(name=board_name)
-                    self.board_objects_cache[board_name] = board
-                except Exception as e:
-                    print(f"LOG ERROR: Board object with name '{board_name}' not returned from API query. Item objects list cannot be queried . ERROR DETAILS: {e}")
+                complexityError = True
+                counter = 1
+                while complexityError and counter < 30:
+                    print(f"\nTrying Mpnday.com API. Try #{counter} from _get_item_objects_list - getting board object")
+                    time.sleep(2)
+                    try:
+                        board = CLIENT.get_board(name=board_name)
+                        self.board_objects_cache[board_name] = board
+                        complexityError = False
+                    except Exception as e:
+                        print(f"LOG ERROR: Board object with name '{board_name}' not returned from API query. Item objects list cannot be queried . ERROR DETAILS: {e}")
+                        counter = counter + 1
+
+                if complexityError:
                     return item_objects_list
+
         else:
             print(f"LOG SUCCESS: Found board object in cache for board name {board_name}. Will use to check if item exists.")
 
@@ -435,12 +465,19 @@ class MondayWrapper:
         except Exception as e:
             print(f"LOG ERROR: Error getting item objects list matching item name {item_name} from Monday API. ERROR DETAILS: {e}")
             print(f"LOG INFO: No item objects returned from the search for item objects for item name \"{item_name}\" due to API error. WIll pause and re-query Monday API")
-            time.sleep(60)
-            try:
-                status_value = create_column_value(id='name', column_type=ColumnType.name, value=str(item_name))
-                item_objects_list = board.get_items_by_column_values(column_value=status_value)
-            except Exception as e:
-                print(f"LOG ERROR: Error getting board objects list  matching item name {item_name} from Monday API on second try. ERROR DETAILS: {e}")
+            complexityError = True
+            counter = 1
+            while complexityError and counter < 30:
+                print(f"\nTrying Mpnday.com API. Try #{counter} from (_get_item_objects_list - getting status value )")
+                time.sleep(2)
+                try:
+                    status_value = create_column_value(id='name', column_type=ColumnType.name, value=str(item_name))
+                    item_objects_list = board.get_items_by_column_values(column_value=status_value)
+                    complexityError = False
+                except Exception as e:
+                    print(f"LOG ERROR: Error getting board objects list  matching item name {item_name} from Monday API on try # {counter}. ERROR DETAILS: {e}")
+                    counter = counter + 1
+            if complexityError:
                 item_objects_list = []
 
         if item_objects_list:
@@ -550,15 +587,22 @@ class MondayWrapper:
         item_obj = self.get_specific_item_by_name(item_name=item_name, board_name=board_name)
         if item_obj is None:
             print(f"LOG WARN: Item object is for item name \"{item_name}\" \"None\".")
-            secs = 60
-            print(f"\nLOG WARN:****Max query complexity for API might have been reached trying to get item object for {item_name}. Cooling off for {secs} seconds before retrying.")
-            time.sleep(secs)
-            item_obj = self.get_specific_item_by_name(item_name=item_name, board_name=board_name)
+            print(f"\nLOG WARN:****Max query complexity for API might have been reached trying to get item object for {item_name}. Cooling off  before retrying.")
+            complexityError = True
+            counter = 1
+            while complexityError and counter < 30:
+                print(f"\nTrying Mpnday.com API. Try #{counter} from (change_value_of_column -  get item object)")
+                time.sleep(2)
+                item_obj = self.get_specific_item_by_name(item_name=item_name, board_name=board_name)
+                if item_obj:
+                    print(f"LOG SUCCESS: Item object for item name \"{item_name}\" was found on try #{counter}.")
+                    complexityError = False
+                else:
+                    print(f"LOG ERROR: Cannot get item object to use to change column value.")
+                    counter = counter + 1
 
             if item_obj is None:
-                print(f"LOG WARN: Item object for item name \"{item_name}\" is \"None\" on second try after pause. Column value will not be changed!")
-            else:
-                print(f"LOG SUCCESS: Item object for item name \"{item_name}\" was found on second try.")
+                print(f"LOG WARN: Item object for item name \"{item_name}\" is \"None\" after {counter} tries. Column value will not be changed!")
 
         # GET THE ID OF THE SPECIFIED COLUMN
         col_id = self.get_column_id_by_name(col_name=col_title)
@@ -584,7 +628,7 @@ class MondayWrapper:
 
         elif col_type == 'color':
             column_type = ColumnType.status
-            labels_string = self.get_column_settings_string_for_board(board_name=board_name, col_title = col_title)
+            labels_string = self.get_column_settings_string_for_board(board_name=board_name, col_title=col_title)
 
             labels = json.loads(labels_string)
 
@@ -612,12 +656,19 @@ class MondayWrapper:
             except Exception as e:
                 print(f"LOG ERROR: Changing column value for item {item_name}, column {col_title} failed: DETAILS: {e}")
                 print(f"LOG INFO: Will pause and retry for item {item_name}")
-                time.sleep(60)
-                try:
-                    item_obj.change_column_value(column_value=column_value)
-                    return new_value
-                except Exception as e:
-                    print(f"LOG ERROR: Changing column value for item {item_name}, column {col_title} failed on 2nd try: DETAILS: {e}")
+                complexityError = True
+                counter = 1
+                while complexityError and counter < 30:
+                    print(f"\nTrying Mpnday.com API. Try #{counter} from (change_value_of_column -  changing value of column)")
+                    time.sleep(2)
+                    try:
+                        item_obj.change_column_value(column_value=column_value)
+                        complexityError = False
+                        print(f"LOG SUCCESS: Value of column changed to {column_value}")
+                        return new_value
+                    except Exception as e:
+                        print(f"LOG ERROR: Changing column value for item {item_name}, column {col_title} failed on {counter} try: DETAILS: {e}")
+                        counter = counter + 1
 
         return None
 
@@ -651,27 +702,48 @@ class MondayWrapper:
         else:
             print(f"LOG INFO: Found board object for board in cache. Board name {board.name} exists!")
 
+        group_object = None
         try:
             group_object = board.get_group(title=group_name)
         except Exception as e:
             print(f"LOG ERROR: Could not find group with name {group_name}: ERROR DETAILS: {e}")
-            time.sleep(60)
-            try:
-                group_object = board.get_group(title=group_name)
-            except Exception as e:
-                print(f"LOG ERROR: Could not find group with name {group_name}: ERROR DETAILS: {e}")
+            complexityError = True
+            counter = 1
+            while complexityError and counter < 30:
+                print(f"\nTrying Mpnday.com API. Try #{counter} (from move_item_to_group - get group object)")
+                time.sleep(2)
+                print(f"LOG INFO: Trying to query API again.")
+                try:
+                    group_object = board.get_group(title=group_name)
+                    complexityError = False
+                except Exception as e:
+                    print(f"LOG ERROR: ERROR DETAILS: {e}.")
+                    counter = counter + 1
+
+            if complexityError:
+                print(f"LOG ERROR: Could not find group with name {group_name}: ")
                 return None
 
         group_id = group_object.id
+        moved_item = None
         try:
             moved_item = item_obj.move_to_group(group_id=group_id)
         except Exception as e:
             print(f"LOG ERROR: Moving item to group failed! Item Name: {item_name}. ERROR DETAILS: {e}. WIll pause and query API again")
-            time.sleep(60)
-            try:
-                moved_item = item_obj.move_to_group(group_id=group_id)
-            except Exception as e:
-                print(f"LOG ERROR: Moving item to group failed on 2nd try. Item Name: {item_name}. ERROR DETAILS: {e}. ")
+            complexityError = True
+            counter = 1
+            while complexityError and counter < 30:
+                print(f"\nTrying Mpnday.com API. Try #{counter} (from move_item_to_group -  move item to group)")
+                time.sleep(2)
+                try:
+                    moved_item = item_obj.move_to_group(group_id=group_id)
+                    complexityError = False
+                except Exception as e:
+                    print(f"LOG ERROR: Moving item to group failed on {counter} try. Item Name: {item_name}. ERROR DETAILS: {e}. ")
+                    counter = counter + 1
+
+            if complexityError:
+                print(f"LOG ERROR: Could not move item {item_name} to group {group_name} after multiple tries")
                 return None
 
         print(f"LOG SUCCESS: Item {item_name} successfully moved to group {group_name}")
